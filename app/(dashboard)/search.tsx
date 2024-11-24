@@ -1,20 +1,21 @@
 'use client';
 
 import { useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation'; // Import `usePathname` to get the current route
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/icons';
 import { Search } from 'lucide-react';
 
 export function SearchInput() {
   const router = useRouter();
+  const pathname = usePathname(); // Get the current pathname
   const [isPending, startTransition] = useTransition();
 
   function searchAction(formData: FormData) {
     let value = formData.get('q') as string;
     let params = new URLSearchParams({ q: value });
     startTransition(() => {
-      router.replace(`/?${params.toString()}`);
+      router.replace(`${pathname}?${params.toString()}`); // Append search to the current path
     });
   }
 

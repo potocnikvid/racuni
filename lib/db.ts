@@ -1,4 +1,4 @@
-import 'server-only';
+// import 'server-only';
 
 import { neon } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-http';
@@ -42,10 +42,10 @@ export const users = pgTable('users', {
 export const customers = pgTable('customers', {
   id: serial('id').primaryKey(),
   name: text('name').notNull(),
-  email: text('email').notNull(),
+  email: text('email'),
   phone: text('phone'),
-  address: text('address'),
-  taxNumber: integer('tax_number'),
+  address: text('address').notNull(),
+  taxNumber: integer('tax_number').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull()
 });
 
@@ -60,6 +60,7 @@ export const invoices = pgTable('invoices', {
   status: invoiceStatusEnum('status').default('pending').notNull(),
   totalAmount: numeric('total_amount', { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
+  issueDate: timestamp('issue_date').notNull(),
   dueDate: timestamp('due_date').notNull(),
   batchId: integer('batch_id').references(() => invoiceBatches.id) // Optional batch reference
 });
@@ -157,7 +158,7 @@ export async function getUsers(
   }
 
   const totalUsers = await db.select({ count: count() }).from(users);
-  const moreUsers = await db.select().from(users).limit(5).offset(offset);
+  const moreUsers = await db.select().from(users).limit(10).offset(offset);
   const newOffset = moreUsers.length >= 5 ? offset + 5 : null;
 
   return {
@@ -187,17 +188,23 @@ export async function getCustomers(
   search: string,
   offset: number
 ): Promise<{
-  customers: SelectCustomer[];
+  customers: Array<{ name: string; address: string; taxNumber: number; createdAt: Date }>;
   newOffset: number | null;
   totalCustomers: number;
 }> {
   if (search) {
+    const customerData = await db
+      .select()
+      .from(customers)
+      .where(ilike(customers.name, `%${search}%`))
+      .limit(1000)
     return {
-      customers: await db
-        .select()
-        .from(customers)
-        .where(ilike(customers.name, `%${search}%`))
-        .limit(1000),
+      customers: customerData.map((customer) => ({
+        name: customer.name,
+        address: customer.address,
+        taxNumber: customer.taxNumber,
+        createdAt: customer.createdAt
+      })),
       newOffset: null,
       totalCustomers: 0
     };
@@ -211,9 +218,9 @@ export async function getCustomers(
   const moreCustomers = await db
     .select()
     .from(customers)
-    .limit(5)
+    .limit(10)
     .offset(offset);
-  const newOffset = moreCustomers.length >= 5 ? offset + 5 : null;
+  const newOffset = moreCustomers.length >= 10 ? offset + 10 : null;
 
   return {
     customers: moreCustomers,
@@ -264,8 +271,75 @@ export async function getInvoices(
   }
 
   const totalInvoices = await db.select({ count: count() }).from(invoices);
-  const moreInvoices = await db.select().from(invoices).limit(5).offset(offset);
-  const newOffset = moreInvoices.length >= 5 ? offset + 5 : null;
+  const moreInvoices = await db.select().from(invoices).limit(10).offset(offset);
+  const newOffset = moreInvoices.length >= 10 ? offset + 10 : null;
+
+  return {
+    invoices: moreInvoices,
+    newOffset,
+    totalInvoices: totalInvoices[0].count
+  };
+}
+
+export type SelectInvoiceCustomer = Array<{
+  invoiceNumber: string;
+  customerName: string;
+  status: string;
+  totalAmount: string;
+  createdAt: Date;
+  issueDate: Date;
+  dueDate: Date;
+}>;
+
+export async function getInvoiceCustomer(
+  search: string,
+  offset: number
+): Promise<{
+  invoices: SelectInvoiceCustomer;
+  newOffset: number | null;
+  totalInvoices: number;
+}> {
+  if (search) {
+    return {
+      invoices: await db
+        .select({
+          invoiceNumber: invoices.invoiceNumber,
+          customerName: customers.name,
+          status: invoices.status,
+          totalAmount: invoices.totalAmount,
+          createdAt: invoices.createdAt,
+          issueDate: invoices.issueDate,
+          dueDate: invoices.dueDate
+        })
+        .from(invoices)
+        .innerJoin(customers, eq(invoices.customerId, customers.id))
+        .where(ilike(customers.name, `%${search}%`))
+        .limit(1000),
+      newOffset: null,
+      totalInvoices: 0
+    };
+  }
+
+  if (offset === null) {
+    return { invoices: [], newOffset: null, totalInvoices: 0 };
+  }
+
+  const totalInvoices = await db.select({ count: count() }).from(invoices);
+  const moreInvoices = await db
+    .select({
+      invoiceNumber: invoices.invoiceNumber,
+      customerName: customers.name,
+      status: invoices.status,
+      totalAmount: invoices.totalAmount,
+      createdAt: invoices.createdAt,
+      issueDate: invoices.issueDate,
+      dueDate: invoices.dueDate
+    })
+    .from(invoices)
+    .innerJoin(customers, eq(invoices.customerId, customers.id))
+    .limit(10)
+    .offset(offset);
+  const newOffset = moreInvoices.length >= 10 ? offset + 10 : null;
 
   return {
     invoices: moreInvoices,
@@ -298,9 +372,12 @@ export async function markBatchAsProcessed(batchId: number) {
   await db.update(invoiceBatches).set({ processed: true }).where(eq(invoiceBatches.id, batchId));
 }
 
-export async function createInvoicesForService(startInvoiceNumber: number, serviceId: number, dueDate: Date) {
-  const year = new Date().getFullYear();
-  const invoiceNumber = 990000 + startInvoiceNumber;
+export async function createInvoicesForService(startingInvoiceNumber: number, serviceId: number, issueDate: Date, dueDate: Date) {
+  console.log('Creating invoices for service:', serviceId);
+  console.log('Issue Date:', issueDate);
+  console.log('Due Date:', dueDate);
+  console.log('Starting Invoice Number:', startingInvoiceNumber);
+  const year = issueDate.getFullYear();
   const batchId = await createInvoiceBatch(); // Create batch
 
   const pricingData = await db
@@ -311,13 +388,20 @@ export async function createInvoicesForService(startInvoiceNumber: number, servi
     .from(customerServicePricing)
     .where(eq(customerServicePricing.serviceId, serviceId));
 
-  const invoicesData = pricingData.map((data) => ({
-    customerId: data.customerId,
-    invoiceNumber: `${year}/${invoiceNumber}`,
-    totalAmount: data.customPrice,
-    dueDate,
-    batchId
-  }));
+  let currentInvoiceNumber = 990000 + startingInvoiceNumber;
+
+  const invoicesData = pricingData.map((data) => {
+    const invoice = {
+      customerId: data.customerId,
+      invoiceNumber: `${year}/${currentInvoiceNumber}`,
+      totalAmount: data.customPrice,
+      issueDate,
+      dueDate,
+      batchId
+    };
+    currentInvoiceNumber += 1; // Increment the invoice number
+    return invoice;
+  });
 
   if (invoicesData.length === 0) {
     throw new Error('No pricing data found for the given service.');
@@ -362,14 +446,18 @@ export async function getServices(
   }
 
   const totalServices = await db.select({ count: count() }).from(services);
-  const moreServices = await db.select().from(services).limit(5).offset(offset);
-  const newOffset = moreServices.length >= 5 ? offset + 5 : null;
+  const moreServices = await db.select().from(services).limit(10).offset(offset);
+  const newOffset = moreServices.length >= 10 ? offset + 10 : null;
 
   return {
     services: moreServices,
     newOffset,
     totalServices: totalServices[0].count
   };
+}
+
+export async function getAllServices() {
+  return await db.select().from(services);
 }
 
 export async function createService(data: SelectService) {
@@ -398,7 +486,6 @@ export async function getCustomerServicePricing() {
     .innerJoin(customers, eq(customerServicePricing.customerId, customers.id))
     .innerJoin(services, eq(customerServicePricing.serviceId, services.id));
 }
-
 
 
 
@@ -431,8 +518,8 @@ export async function getProducts(
   }
 
   let totalProducts = await db.select({ count: count() }).from(products);
-  let moreProducts = await db.select().from(products).limit(5).offset(offset);
-  let newOffset = moreProducts.length >= 5 ? offset + 5 : null;
+  let moreProducts = await db.select().from(products).limit(10).offset(offset);
+  let newOffset = moreProducts.length >= 10 ? offset + 10 : null;
 
   return {
     products: moreProducts,

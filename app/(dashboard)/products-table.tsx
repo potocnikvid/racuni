@@ -31,14 +31,16 @@ export function ProductsTable({
   totalProducts: number;
 }) {
   let router = useRouter();
-  let productsPerPage = 5;
+  let productsPerPage = 10;
 
   function prevPage() {
-    router.back();
+    const newOffset = Math.max(0, offset - productsPerPage);
+    router.replace(`/products/?offset=${newOffset}`, { scroll: false });
   }
 
   function nextPage() {
-    router.push(`/?offset=${offset}`, { scroll: false });
+    const newOffset = offset + productsPerPage;
+    router.push(`/products/?offset=${newOffset}`, { scroll: false });
   }
 
   return (
