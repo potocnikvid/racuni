@@ -31,7 +31,7 @@ export function InvoicesTable({
     customerName: string;
     status: string;
     totalAmount: string;
-    createdAt: Date;
+    issueDate: Date;
     dueDate: Date;
   }>;
   offset: number;
@@ -65,7 +65,7 @@ export function InvoicesTable({
               <TableHead>Customer Name</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Total Amount</TableHead>
-              <TableHead>Created At</TableHead>
+              <TableHead>IssueDate</TableHead>
               <TableHead>Due Date</TableHead>
             </TableRow>
           </TableHeader>
@@ -76,7 +76,7 @@ export function InvoicesTable({
                 <TableCell>{invoice.customerName}</TableCell>
                 <TableCell>{invoice.status}</TableCell>
                 <TableCell>${invoice.totalAmount}</TableCell>
-                <TableCell>{format(new Date(invoice.createdAt), 'dd-mm-yyyy')}</TableCell>
+                <TableCell>{format(new Date(invoice.issueDate), 'dd-mm-yyyy')}</TableCell>
                 <TableCell>{format(new Date(invoice.dueDate), 'dd-mm-yyyy')}</TableCell>
               </TableRow>
             ))}

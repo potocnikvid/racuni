@@ -55,7 +55,6 @@ export async function createInvoicesAction(formData: FormData) {
     // Example logic for creating invoices
     const { invoices, batchId } = await createInvoicesForService(invoiceNumber, serviceId, new Date(issueDate), new Date(dueDate));
 
-
     console.log('Invoices created:', invoices);
     console.log('Batch ID:', batchId);  
 

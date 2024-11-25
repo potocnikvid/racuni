@@ -14,6 +14,9 @@ import {
 } from 'drizzle-orm/pg-core';
 import { count, eq, ilike } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
+import { spawn } from "child_process";
+import fs from "fs/promises";
+import path from "path";
 
 export const db = drizzle(neon(process.env.POSTGRES_URL!));
 
@@ -62,7 +65,8 @@ export const invoices = pgTable('invoices', {
   createdAt: timestamp('created_at').defaultNow().notNull(),
   issueDate: timestamp('issue_date').notNull(),
   dueDate: timestamp('due_date').notNull(),
-  batchId: integer('batch_id').references(() => invoiceBatches.id) // Optional batch reference
+  batchId: integer('batch_id').references(() => invoiceBatches.id), // Optional batch reference
+  url: text('url')
 });
 
 
@@ -133,39 +137,8 @@ export const products = pgTable('products', {
 export type SelectUser = typeof users.$inferSelect;
 export const insertUserSchema = createInsertSchema(users);
 
-export async function getUsers(
-  search: string,
-  offset: number
-): Promise<{
-  users: SelectUser[];
-  newOffset: number | null;
-  totalUsers: number;
-}> {
-  if (search) {
-    return {
-      users: await db
-        .select()
-        .from(users)
-        .where(ilike(users.name, `%${search}%`))
-        .limit(1000),
-      newOffset: null,
-      totalUsers: 0
-    };
-  }
-
-  if (offset === null) {
-    return { users: [], newOffset: null, totalUsers: 0 };
-  }
-
-  const totalUsers = await db.select({ count: count() }).from(users);
-  const moreUsers = await db.select().from(users).limit(10).offset(offset);
-  const newOffset = moreUsers.length >= 5 ? offset + 5 : null;
-
-  return {
-    users: moreUsers,
-    newOffset,
-    totalUsers: totalUsers[0].count
-  };
+export async function getUser() {
+  return await db.select().from(users).limit(1);
 }
 
 export async function createUser(data: SelectUser) {
@@ -227,6 +200,10 @@ export async function getCustomers(
     newOffset,
     totalCustomers: totalCustomers[0].count
   };
+}
+
+export async function getCustomerById(id: number) {
+  return await db.select().from(customers).where(eq(customers.id, id)).limit(1);
 }
 
 export async function createCustomer(data: SelectCustomer) {
@@ -372,50 +349,77 @@ export async function markBatchAsProcessed(batchId: number) {
   await db.update(invoiceBatches).set({ processed: true }).where(eq(invoiceBatches.id, batchId));
 }
 
-export async function createInvoicesForService(startingInvoiceNumber: number, serviceId: number, issueDate: Date, dueDate: Date) {
-  console.log('Creating invoices for service:', serviceId);
-  console.log('Issue Date:', issueDate);
-  console.log('Due Date:', dueDate);
-  console.log('Starting Invoice Number:', startingInvoiceNumber);
+
+export async function createInvoicesForService(
+  startingInvoiceNumber: number,
+  serviceId: number,
+  issueDate: Date,
+  dueDate: Date
+) {
+  const scriptPath = path.resolve("scripts", "generate_invoice.py");
   const year = issueDate.getFullYear();
-  const batchId = await createInvoiceBatch(); // Create batch
+  const batchId = await createInvoiceBatch();
 
   const pricingData = await db
     .select({
       customerId: customerServicePricing.customerId,
-      customPrice: customerServicePricing.customPrice
+      customPrice: customerServicePricing.customPrice,
     })
     .from(customerServicePricing)
     .where(eq(customerServicePricing.serviceId, serviceId));
 
   let currentInvoiceNumber = 990000 + startingInvoiceNumber;
+  const invoicePromises = pricingData.map(async (data) => {
+    const customer = await getCustomerById(data.customerId);
+    const user = await getUser();
+    const services = await getServiceById(serviceId);
 
-  const invoicesData = pricingData.map((data) => {
     const invoice = {
+      invoice_number: `${year}/${currentInvoiceNumber}`,
+      issue_date: issueDate.toISOString(),
+      due_date: dueDate.toISOString(),
+    };
+    currentInvoiceNumber++;
+
+    // console.log('Invoking Python script with command: python3', scriptPath, `'${JSON.stringify(user[0])}'`, `'${JSON.stringify(customer[0])}'`, `'${JSON.stringify(invoice)}'`, `'${JSON.stringify(services)}'`);
+
+    // Call Python script
+    const pythonProcess = spawn("python3", [
+      path.resolve(scriptPath),
+      `'${JSON.stringify(user[0])}'`,
+      `'${JSON.stringify(customer[0])}'`,
+      `'${JSON.stringify(invoice)}'`,
+      `'${JSON.stringify(services)}'`,
+    ]);
+    
+    let pdfPath = "";
+    for await (const chunk of pythonProcess.stdout) {
+      pdfPath += chunk;
+    }
+
+    pdfPath = pdfPath.trim(); // Last line contains the file path
+    if (!pdfPath) throw new Error("Failed to generate PDF");
+
+    // Save invoice to the database
+    const invoiceData = {
       customerId: data.customerId,
-      invoiceNumber: `${year}/${currentInvoiceNumber}`,
+      invoiceNumber: invoice.invoice_number,
       totalAmount: data.customPrice,
       issueDate,
       dueDate,
-      batchId
+      batchId,
+      url: pdfPath, // Store the path
     };
-    currentInvoiceNumber += 1; // Increment the invoice number
-    return invoice;
+
+    await db.insert(invoices).values(invoiceData);
+
+    return invoiceData;
   });
 
-  if (invoicesData.length === 0) {
-    throw new Error('No pricing data found for the given service.');
-  }
-  
-  try {
-    await db.insert(invoices).values(invoicesData);
-    return { invoices, batchId };
-
-  } catch (error) {
-    console.error('Error inserting invoices:', error);
-    throw error;
-  }
+  const results = await Promise.all(invoicePromises);
+  return { invoices: results, batchId };
 }
+
 
 
 export type SelectService = typeof services.$inferSelect;
@@ -458,6 +462,10 @@ export async function getServices(
 
 export async function getAllServices() {
   return await db.select().from(services);
+}
+
+export async function getServiceById(id: number) {
+  return await db.select().from(services).where(eq(services.id, id)).limit(1);
 }
 
 export async function createService(data: SelectService) {
