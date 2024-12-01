@@ -1,6 +1,7 @@
 'use server';
 
-import { createInvoicesForService, deleteCustomerById, deleteInvoiceById, deleteProductById, deleteServiceById, deleteUserById } from '@/lib/db';
+import { deleteCustomerById, deleteInvoiceById, deleteProductById, deleteServiceById, deleteUserById } from '@/lib/db';
+import { createInvoicesForServiceApi } from '@/lib/invoices';
 import { revalidatePath } from 'next/cache';
 
 // export async function deleteUser(formData: FormData) {
@@ -53,7 +54,7 @@ export async function createInvoicesAction(formData: FormData) {
 
   try {
     // Example logic for creating invoices
-    const { invoices, batchId } = await createInvoicesForService(invoiceNumber, serviceId, new Date(issueDate), new Date(dueDate));
+    const { invoices, batchId } = await createInvoicesForServiceApi(invoiceNumber, serviceId, new Date(issueDate), new Date(dueDate));
 
     console.log('Invoices created:', invoices);
     console.log('Batch ID:', batchId);  

@@ -11,9 +11,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { createInvoicesAction } from './actions'; // Import the action
 import { getAllServices } from '@/lib/db';
+import { auth, signOut } from '@/lib/auth';
 
 export default async function HomePage() {
   // Fetch services (ensure this is a server component)
+  const session = await auth();
+
   const services = await getAllServices();
 
   return (
@@ -72,5 +75,18 @@ export default async function HomePage() {
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+function SignOut() {
+  return (
+    <form
+      action={async () => {
+        'use server';
+        await signOut();
+      }}
+    >
+      <button type="submit">Sign out</button>
+    </form>
   );
 }

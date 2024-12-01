@@ -10,15 +10,20 @@ import {
   integer,
   timestamp,
   pgEnum,
-  serial
+  serial,
+  varchar
 } from 'drizzle-orm/pg-core';
 import { count, eq, ilike } from 'drizzle-orm';
 import { createInsertSchema } from 'drizzle-zod';
 import { spawn } from "child_process";
 import fs from "fs/promises";
+import axios from "axios";
 import path from "path";
+import { genSaltSync, hashSync } from 'bcrypt-ts';
 
-export const db = drizzle(neon(process.env.POSTGRES_URL!));
+let client = neon(`${process.env.POSTGRES_URL!}`);
+
+export const db = drizzle(client);
 
 // Enum for invoice statuses
 export const invoiceStatusEnum = pgEnum('invoice_status', [
@@ -30,6 +35,8 @@ export const invoiceStatusEnum = pgEnum('invoice_status', [
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
+  email: text('email').notNull().unique(),
+  password: text('password').notNull(),
   name: text('name').notNull(),
   address: text('address').notNull(),
   taxPayer: boolean('tax_payer').notNull(),
@@ -131,20 +138,60 @@ export const products = pgTable('products', {
 });
 
 
+async function ensureTableExists() {
+  const result = await client`
+    SELECT EXISTS (
+      SELECT FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_name = 'User'
+    );`;
+
+  if (!result[0].exists) {
+    await client`
+      CREATE TABLE "User" (
+        id SERIAL PRIMARY KEY,
+        email VARCHAR(64),
+        password VARCHAR(64)
+      );`;
+  }
+
+  const table = pgTable('User', {
+    id: serial('id').primaryKey(),
+    email: varchar('email', { length: 64 }),
+    password: varchar('password', { length: 64 }),
+  });
+
+  return table;
+}
 
 
 
 export type SelectUser = typeof users.$inferSelect;
 export const insertUserSchema = createInsertSchema(users);
 
-export async function getUser() {
-  return await db.select().from(users).limit(1);
+export async function getUserById(id: number) {
+  const userList = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return userList[0];
+}
+
+export async function getUserByEmail(email: string) {
+  const userList = await db.select().from(users).where(eq(users.email, email)).limit(1)
+  return userList[0];
 }
 
 export async function createUser(data: SelectUser) {
   await db.insert(users).values(data);
 }
 
+export async function createUserAuth(email: string, password: string) {
+  const users = await ensureTableExists();
+  let salt = genSaltSync(10);
+  let hash = hashSync(password, salt);
+  console.log('Hashed password:', hash);
+  const res = await db.insert(users).values({ email, password: hash });
+  return res;
+}
+ 
 export async function updateUserById(id: number, data: Partial<SelectUser>) {
   await db.update(users).set(data).where(eq(users.id, id));
 }
@@ -203,7 +250,8 @@ export async function getCustomers(
 }
 
 export async function getCustomerById(id: number) {
-  return await db.select().from(customers).where(eq(customers.id, id)).limit(1);
+  const customerList = await db.select().from(customers).where(eq(customers.id, id)).limit(1);
+  return customerList[0];
 }
 
 export async function createCustomer(data: SelectCustomer) {
@@ -350,13 +398,83 @@ export async function markBatchAsProcessed(batchId: number) {
 }
 
 
-export async function createInvoicesForService(
+// export async function createInvoicesForService(
+//   startingInvoiceNumber: number,
+//   serviceId: number,
+//   issueDate: Date,
+//   dueDate: Date
+// ) {
+//   const scriptPath = path.resolve("scripts", "generate_invoice.py");
+//   const year = issueDate.getFullYear();
+//   const batchId = await createInvoiceBatch();
+
+//   const pricingData = await db
+//     .select({
+//       customerId: customerServicePricing.customerId,
+//       customPrice: customerServicePricing.customPrice,
+//     })
+//     .from(customerServicePricing)
+//     .where(eq(customerServicePricing.serviceId, serviceId));
+
+//   let currentInvoiceNumber = 990000 + startingInvoiceNumber;
+//   const invoicePromises = pricingData.map(async (data) => {
+//     const customer = await getCustomerById(data.customerId);
+//     const user = await getUserById(1);
+//     const services = await getServiceById(serviceId);
+
+//     const invoice = {
+//       invoice_number: `${year}/${currentInvoiceNumber}`,
+//       issue_date: issueDate.toISOString(),
+//       due_date: dueDate.toISOString(),
+//     };
+//     currentInvoiceNumber++;
+
+//     // console.log('Invoking Python script with command: python3', scriptPath, `'${JSON.stringify(user[0])}'`, `'${JSON.stringify(customer[0])}'`, `'${JSON.stringify(invoice)}'`, `'${JSON.stringify(services)}'`);
+
+//     // Call Python script
+//     const pythonProcess = spawn("python3", [
+//       path.resolve(scriptPath),
+//       `'${JSON.stringify(user[0])}'`,
+//       `'${JSON.stringify(customer[0])}'`,
+//       `'${JSON.stringify(invoice)}'`,
+//       `'${JSON.stringify(services)}'`,
+//     ]);
+    
+//     let pdfPath = "";
+//     for await (const chunk of pythonProcess.stdout) {
+//       pdfPath += chunk;
+//     }
+
+//     pdfPath = pdfPath.trim(); // Last line contains the file path
+//     if (!pdfPath) throw new Error("Failed to generate PDF");
+
+//     // Save invoice to the database
+//     const invoiceData = {
+//       customerId: data.customerId,
+//       invoiceNumber: invoice.invoice_number,
+//       totalAmount: data.customPrice,
+//       issueDate,
+//       dueDate,
+//       batchId,
+//       url: pdfPath, // Store the path
+//     };
+
+//     await db.insert(invoices).values(invoiceData);
+
+//     return invoiceData;
+//   });
+
+//   const results = await Promise.all(invoicePromises);
+//   return { invoices: results, batchId };
+// }
+
+
+export async function createInvoicesForServiceApi(
   startingInvoiceNumber: number,
   serviceId: number,
   issueDate: Date,
   dueDate: Date
 ) {
-  const scriptPath = path.resolve("scripts", "generate_invoice.py");
   const year = issueDate.getFullYear();
   const batchId = await createInvoiceBatch();
 
@@ -369,9 +487,10 @@ export async function createInvoicesForService(
     .where(eq(customerServicePricing.serviceId, serviceId));
 
   let currentInvoiceNumber = 990000 + startingInvoiceNumber;
+
   const invoicePromises = pricingData.map(async (data) => {
     const customer = await getCustomerById(data.customerId);
-    const user = await getUser();
+    const user = await getUserById(1);
     const services = await getServiceById(serviceId);
 
     const invoice = {
@@ -381,45 +500,49 @@ export async function createInvoicesForService(
     };
     currentInvoiceNumber++;
 
-    // console.log('Invoking Python script with command: python3', scriptPath, `'${JSON.stringify(user[0])}'`, `'${JSON.stringify(customer[0])}'`, `'${JSON.stringify(invoice)}'`, `'${JSON.stringify(services)}'`);
-
-    // Call Python script
-    const pythonProcess = spawn("python3", [
-      path.resolve(scriptPath),
-      `'${JSON.stringify(user[0])}'`,
-      `'${JSON.stringify(customer[0])}'`,
-      `'${JSON.stringify(invoice)}'`,
-      `'${JSON.stringify(services)}'`,
-    ]);
-    
-    let pdfPath = "";
-    for await (const chunk of pythonProcess.stdout) {
-      pdfPath += chunk;
-    }
-
-    pdfPath = pdfPath.trim(); // Last line contains the file path
-    if (!pdfPath) throw new Error("Failed to generate PDF");
-
-    // Save invoice to the database
-    const invoiceData = {
-      customerId: data.customerId,
-      invoiceNumber: invoice.invoice_number,
-      totalAmount: data.customPrice,
-      issueDate,
-      dueDate,
-      batchId,
-      url: pdfPath, // Store the path
+    // Construct request payload for the FastAPI API
+    const requestData = {
+      user: user, // Ensure this matches the expected FastAPI model
+      customer: customer,
+      invoice,
+      services,
     };
 
-    await db.insert(invoices).values(invoiceData);
+    try {
+      // Call the FastAPI API endpoint
+      const response = await axios.post(
+        "http://127.0.0.1:8000/generate-invoice/", // FastAPI endpoint
+        requestData,
+        {
+          responseType: "arraybuffer", // Ensure PDF file is received as a binary
+        }
+      );
 
-    return invoiceData;
+      // Save the PDF to a specific location
+      const pdfFileName = `Invoice_${invoice.invoice_number}.pdf`;
+      const pdfFilePath = path.resolve("invoices", pdfFileName);
+      require("fs").writeFileSync(pdfFilePath, response.data);
+
+      // Save invoice to the database
+      const invoiceData = {
+        customerId: data.customerId,
+        invoiceNumber: invoice.invoice_number,
+        totalAmount: data.customPrice,
+        issueDate,
+        dueDate,
+        batchId,
+        url: pdfFilePath, // Store the file path
+      };
+
+      await db.insert(invoices).values(invoiceData);
+
+      return invoiceData;
+    } catch (error) {
+      console.error("Failed to generate PDF for invoice:", invoice.invoice_number, error);
+      throw new Error(`Failed to generate invoice for ${data.customerId}`);
+    }
   });
-
-  const results = await Promise.all(invoicePromises);
-  return { invoices: results, batchId };
 }
-
 
 
 export type SelectService = typeof services.$inferSelect;
