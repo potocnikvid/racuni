@@ -81,7 +81,7 @@ export async function createInvoicesForServiceApi(
         { responseType: 'arraybuffer' }
       );
       console.log(response);
-      const pdfFileName = `Invoice_${invoice.invoice_number}.pdf`;
+      const pdfFileName = `Invoice_${invoice.invoice_number}_${customer.name.replaceAll(' ', '-').replaceAll(',', '-').replaceAll('.', '').replaceAll('--', '-').toLowerCase()}.pdf`;
 
       const pdfFilePath = path.resolve('invoices', pdfFileName);
       const pdfDir = path.dirname(pdfFilePath);
