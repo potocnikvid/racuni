@@ -1,4 +1,4 @@
-import { db, products, users, customers, services, customerServicePricing, invoiceBatches, invoices, invoiceItems } from 'lib/db';
+import { db, products, users, customers, services, getCustomerServicePricing, invoiceBatches, invoices, invoiceItems } from 'lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -312,152 +312,152 @@ export async function GET() {
 
   // Seed Customer Service Pricing Table
   const serviceId = 3; // Service ID
-  await db.insert(customerServicePricing).values([
-    {
-      customerId: 1,
-      customPrice: '80',
-      serviceId: serviceId
-    },
-    {
-      customerId: 2,
-      customPrice: '120',
-      serviceId: serviceId
-    },
-    {
-      customerId: 3,
-      customPrice: '150',
-      serviceId: serviceId
-    },
-    {
-      customerId: 4,
-      customPrice: '130',
-      serviceId: serviceId
-    },
-    {
-      customerId: 5,
-      customPrice: '240',
-      serviceId: serviceId
-    },
-    {
-      customerId: 6,
-      customPrice: '100',
-      serviceId: serviceId
-    },
-    {
-      customerId: 7,
-      customPrice: '150',
-      serviceId: serviceId
-    },
-    {
-      customerId: 8,
-      customPrice: '100',
-      serviceId: serviceId
-    },
-    {
-      customerId: 9,
-      customPrice: '140',
-      serviceId: serviceId
-    },
-    {
-      customerId: 10,
-      customPrice: '240',
-      serviceId: serviceId
-    },
-    {
-      customerId: 11,
-      customPrice: '150',
-      serviceId: serviceId
-    },
-    {
-      customerId: 12,
-      customPrice: '140',
-      serviceId: serviceId
-    },
-    {
-      customerId: 13,
-      customPrice: '170',
-      serviceId: serviceId
-    },
-    {
-      customerId: 14,
-      customPrice: '100',
-      serviceId: serviceId
-    },
-    {
-      customerId: 15,
-      customPrice: '130',
-      serviceId: serviceId
-    },
-    {
-      customerId: 16,
-      customPrice: '150',
-      serviceId: serviceId
-    },
-    {
-      customerId: 17,
-      customPrice: '100',
-      serviceId: serviceId
-    },
-    {
-      customerId: 18,
-      customPrice: '150',
-      serviceId: serviceId
-    },
-    {
-      customerId: 19,
-      customPrice: '100',
-      serviceId: serviceId
-    },
-    {
-      customerId: 20,
-      customPrice:'130',
-      serviceId: serviceId
-    },
-    {
-      customerId: 21,
-      customPrice: '150',
-      serviceId: serviceId
-    },
-    {
-      customerId: 22,
-      customPrice: '100',
-      serviceId: serviceId
-    },
-    {
-      customerId: 23,
-      customPrice: '140',
-      serviceId: serviceId
-    },
-    {
-      customerId: 24,
-      customPrice: '150',
-      serviceId: serviceId
-    },
-    {
-      customerId: 25,
-      customPrice: '100',
-      serviceId: serviceId
-    },
-    {
-      customerId: 26,
-      customPrice: '130',
-      serviceId: serviceId
-    },
-    {
-      customerId: 27,
-      customPrice: '150',
-      serviceId: serviceId
-    },
-    {
-      customerId: 28,
-      customPrice: '100',
-      serviceId: serviceId
-    },
-    {
-      customerId: 29,
-      customPrice: '130',
-      serviceId: serviceId
-    }
-  ]);
+  // await db.insert(customerServicePricing).values([
+  //   {
+  //     customerId: 1,
+  //     customPrice: '80',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 2,
+  //     customPrice: '120',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 3,
+  //     customPrice: '150',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 4,
+  //     customPrice: '130',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 5,
+  //     customPrice: '240',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 6,
+  //     customPrice: '100',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 7,
+  //     customPrice: '150',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 8,
+  //     customPrice: '100',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 9,
+  //     customPrice: '140',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 10,
+  //     customPrice: '240',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 11,
+  //     customPrice: '150',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 12,
+  //     customPrice: '140',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 13,
+  //     customPrice: '170',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 14,
+  //     customPrice: '100',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 15,
+  //     customPrice: '130',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 16,
+  //     customPrice: '150',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 17,
+  //     customPrice: '100',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 18,
+  //     customPrice: '150',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 19,
+  //     customPrice: '100',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 20,
+  //     customPrice:'130',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 21,
+  //     customPrice: '150',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 22,
+  //     customPrice: '100',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 23,
+  //     customPrice: '140',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 24,
+  //     customPrice: '150',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 25,
+  //     customPrice: '100',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 26,
+  //     customPrice: '130',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 27,
+  //     customPrice: '150',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 28,
+  //     customPrice: '100',
+  //     serviceId: serviceId
+  //   },
+  //   {
+  //     customerId: 29,
+  //     customPrice: '130',
+  //     serviceId: serviceId
+  //   }
+  // ]);
   return Response.json({ message: 'Seed data has been successfully added!' });
 }

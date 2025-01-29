@@ -56,11 +56,18 @@ export default async function HomePage() {
               />
             </div>
             <div>
+              <label htmlFor="date" className="text-sm font-medium">
+                Date
+              </label>
+              <Input id="date" name="date" type="date" required />
+            </div>
+            <div>
               <label htmlFor="issueDate" className="text-sm font-medium">
                 Invoice Issue Date
               </label>
               <Input id="issueDate" name="issueDate" type="date" required />
             </div>
+
             <div>
               <label htmlFor="dueDate" className="text-sm font-medium">
                 Invoice Due Date

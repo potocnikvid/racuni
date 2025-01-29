@@ -31,6 +31,8 @@ export function CustomersTable({
     address: string;
     taxNumber: number;
     createdAt: Date;
+    email: string | null;
+    phone: string | null;
   }>;
   offset: number;
   totalCustomers: number;
@@ -72,6 +74,8 @@ export function CustomersTable({
                 <TableCell>{customer.name}</TableCell>
                 <TableCell>{customer.address}</TableCell>
                 <TableCell>{customer.taxNumber}</TableCell>
+                <TableCell>{customer.email}</TableCell>
+                <TableCell>{customer.phone}</TableCell>
                 <TableCell>
                   {format(new Date(customer.createdAt), 'dd-mm-yyyy')}
                 </TableCell>

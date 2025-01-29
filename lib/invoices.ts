@@ -2,7 +2,7 @@ import axios from 'axios';
 import path from 'path';
 import {
   db,
-  customerServicePricing,
+  subscriptions,
   invoices,
   createInvoiceBatch,
   getCustomerById,
@@ -16,6 +16,7 @@ export async function createInvoicesForServiceApi(
   startingInvoiceNumber: number,
   serviceId: number,
   issueDate: Date,
+  date: Date,
   dueDate: Date
 ) {
   const year = issueDate.getFullYear();
@@ -23,15 +24,19 @@ export async function createInvoicesForServiceApi(
 
   const pricingData = await db
     .select({
-      customerId: customerServicePricing.customerId,
-      customPrice: customerServicePricing.customPrice
+      customerId: subscriptions.customerId,
+      customPrice: subscriptions.customPrice,
+      active: subscriptions.active
     })
-    .from(customerServicePricing)
-    .where(eq(customerServicePricing.serviceId, serviceId));
+    .from(subscriptions)
+    .where(eq(subscriptions.serviceId, serviceId));
 
   let currentInvoiceNumber = 990000 + startingInvoiceNumber;
 
   const invoicePromises = pricingData.map(async (data) => {
+    if (!data.active) {
+      return;
+    }
     const customer = await getCustomerById(data.customerId);
     const user = await getUserById(2);
     const services = await getServiceById(serviceId);
@@ -39,6 +44,7 @@ export async function createInvoicesForServiceApi(
     const invoice = {
       invoice_number: `${year}_${currentInvoiceNumber}`,
       issue_date: issueDate.toISOString(),
+      date: date.toISOString(),
       due_date: dueDate.toISOString()
     };
     currentInvoiceNumber++;
@@ -64,6 +70,7 @@ export async function createInvoicesForServiceApi(
       invoice: {
         invoice_number: invoice.invoice_number,
         issue_date: invoice.issue_date,
+        date: invoice.date,
         due_date: invoice.due_date
       },
       services: services.map((service) => ({
@@ -80,7 +87,6 @@ export async function createInvoicesForServiceApi(
         requestData,
         { responseType: 'arraybuffer' }
       );
-      console.log(response);
       const pdfFileName = `Invoice_${invoice.invoice_number}_${customer.name.replaceAll(' ', '-').replaceAll(',', '-').replaceAll('.', '').replaceAll('--', '-').toLowerCase()}.pdf`;
 
       const pdfFilePath = path.resolve('invoices', pdfFileName);
@@ -95,6 +101,7 @@ export async function createInvoicesForServiceApi(
         invoiceNumber: invoice.invoice_number,
         totalAmount: data.customPrice,
         issueDate,
+        date,
         dueDate,
         batchId,
         url: pdfFilePath

@@ -21,6 +21,10 @@ import axios from "axios";
 import path from "path";
 import { genSaltSync, hashSync } from 'bcrypt-ts';
 
+if (!process.env.POSTGRES_URL) {
+  throw new Error('POSTGRES_URL environment variable is not set');
+}
+
 let client = neon(`${process.env.POSTGRES_URL!}`);
 
 export const db = drizzle(client);
@@ -71,6 +75,7 @@ export const invoices = pgTable('invoices', {
   totalAmount: numeric('total_amount', { precision: 10, scale: 2 }).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   issueDate: timestamp('issue_date').notNull(),
+  date: timestamp('date').notNull(),
   dueDate: timestamp('due_date').notNull(),
   batchId: integer('batch_id').references(() => invoiceBatches.id), // Optional batch reference
   url: text('url')
@@ -87,7 +92,7 @@ export const services = pgTable('services', {
 });
 
 // Customer Service Pricing Table
-export const customerServicePricing = pgTable('customer_service_pricing', {
+export const subscriptions = pgTable('customer_service_pricing', {
   id: serial('id').primaryKey(),
   customerId: integer('customer_id')
     .notNull()
@@ -96,7 +101,8 @@ export const customerServicePricing = pgTable('customer_service_pricing', {
     .notNull()
     .references(() => services.id),
   customPrice: numeric('custom_price', { precision: 10, scale: 2 }).notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull()
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  active: boolean('active').default(true).notNull()
 });
 
 
@@ -208,7 +214,7 @@ export async function getCustomers(
   search: string,
   offset: number
 ): Promise<{
-  customers: Array<{ name: string; address: string; taxNumber: number; createdAt: Date }>;
+  customers: Array<{ name: string; address: string; taxNumber: number; email: string | null; phone: string | null; createdAt: Date}>;
   newOffset: number | null;
   totalCustomers: number;
 }> {
@@ -223,6 +229,8 @@ export async function getCustomers(
         name: customer.name,
         address: customer.address,
         taxNumber: customer.taxNumber,
+        email: customer.email,
+        phone: customer.phone,
         createdAt: customer.createdAt
       })),
       newOffset: null,
@@ -254,8 +262,17 @@ export async function getCustomerById(id: number) {
   return customerList[0];
 }
 
-export async function createCustomer(data: SelectCustomer) {
-  await db.insert(customers).values(data);
+export async function createCustomer(data: Partial<SelectCustomer>) {
+  if (!data.name || !data.address || !data.taxNumber) {
+    throw new Error('Missing required fields');
+  }
+  await db.insert(customers).values({
+    name: data.name || '',
+    address: data.address || '',
+    taxNumber: data.taxNumber || 0,
+    email: data.email || '',
+    phone: data.phone || ''
+  });
 }
 
 export async function updateCustomerById(id: number, data: Partial<SelectCustomer>) {
@@ -313,6 +330,7 @@ export type SelectInvoiceCustomer = Array<{
   totalAmount: string;
   createdAt: Date;
   issueDate: Date;
+  date: Date;
   dueDate: Date;
 }>;
 
@@ -334,6 +352,7 @@ export async function getInvoiceCustomer(
           totalAmount: invoices.totalAmount,
           createdAt: invoices.createdAt,
           issueDate: invoices.issueDate,
+          date: invoices.date,
           dueDate: invoices.dueDate
         })
         .from(invoices)
@@ -358,6 +377,7 @@ export async function getInvoiceCustomer(
       totalAmount: invoices.totalAmount,
       createdAt: invoices.createdAt,
       issueDate: invoices.issueDate,
+      date: invoices.date,
       dueDate: invoices.dueDate
     })
     .from(invoices)
@@ -473,6 +493,7 @@ export async function createInvoicesForServiceApi(
   startingInvoiceNumber: number,
   serviceId: number,
   issueDate: Date,
+  date: Date,
   dueDate: Date
 ) {
   const year = issueDate.getFullYear();
@@ -480,15 +501,19 @@ export async function createInvoicesForServiceApi(
 
   const pricingData = await db
     .select({
-      customerId: customerServicePricing.customerId,
-      customPrice: customerServicePricing.customPrice,
+      customerId: subscriptions.customerId,
+      customPrice: subscriptions.customPrice,
+      active: subscriptions.active
     })
-    .from(customerServicePricing)
-    .where(eq(customerServicePricing.serviceId, serviceId));
+    .from(subscriptions)
+    .where(eq(subscriptions.serviceId, serviceId));
 
   let currentInvoiceNumber = 990000 + startingInvoiceNumber;
 
   const invoicePromises = pricingData.map(async (data) => {
+    if (!data.active) {
+      return;
+    }
     const customer = await getCustomerById(data.customerId);
     const user = await getUserById(1);
     const services = await getServiceById(serviceId);
@@ -496,6 +521,7 @@ export async function createInvoicesForServiceApi(
     const invoice = {
       invoice_number: `${year}/${currentInvoiceNumber}`,
       issue_date: issueDate.toISOString(),
+      date: date.toISOString(),
       due_date: dueDate.toISOString(),
     };
     currentInvoiceNumber++;
@@ -529,6 +555,7 @@ export async function createInvoicesForServiceApi(
         invoiceNumber: invoice.invoice_number,
         totalAmount: data.customPrice,
         issueDate,
+        date,
         dueDate,
         batchId,
         url: pdfFilePath, // Store the file path
@@ -607,15 +634,16 @@ export async function deleteServiceById(id: number) {
 export async function getCustomerServicePricing() {
   return await db
     .select({
-      customerId: customerServicePricing.customerId,
-      serviceId: customerServicePricing.serviceId,
-      customPrice: customerServicePricing.customPrice,
+      customerId: subscriptions.customerId,
+      serviceId: subscriptions.serviceId,
+      customPrice: subscriptions.customPrice,
+      active: subscriptions.active,
       customerName: customers.name,
-      serviceName: services.name
+      serviceName: services.name,
     })
-    .from(customerServicePricing)
-    .innerJoin(customers, eq(customerServicePricing.customerId, customers.id))
-    .innerJoin(services, eq(customerServicePricing.serviceId, services.id));
+    .from(subscriptions)
+    .innerJoin(customers, eq(subscriptions.customerId, customers.id))
+    .innerJoin(services, eq(subscriptions.serviceId, services.id));
 }
 
 
@@ -669,4 +697,57 @@ export async function updateProductById(id: number, data: Partial<SelectProduct>
 
 export async function deleteProductById(id: number) {
   await db.delete(products).where(eq(products.id, id));
+}
+
+export type SelectSubscription = typeof subscriptions.$inferSelect;
+export const insertSubscriptionSchema = createInsertSchema(subscriptions);
+
+export async function getSubscriptions(
+  search: string,
+  offset: number
+): Promise<{
+  subscriptions: SelectSubscription[];
+  newOffset: number | null;
+  totalSubscriptions: number;
+}> {
+  if (search) {
+    return {
+      subscriptions: await db
+        .select()
+        .from(subscriptions)
+        .limit(1000),
+      newOffset: null,
+      totalSubscriptions: 0
+    };
+  }
+
+  if (offset === null) {
+    return { subscriptions: [], newOffset: null, totalSubscriptions: 0 };
+  }
+
+  const totalSubscriptions = await db.select({ count: count() }).from(subscriptions);
+  const moreSubscriptions = await db.select().from(subscriptions).limit(10).offset(offset);
+  const newOffset = moreSubscriptions.length >= 10 ? offset + 10 : null;
+
+  return {
+    subscriptions: moreSubscriptions,
+    newOffset,
+    totalSubscriptions: totalSubscriptions[0].count
+  };
+}
+
+export async function getSubscriptionById(id: number) {
+  return await db.select().from(subscriptions).where(eq(subscriptions.id, id)).limit(1);
+}
+
+export async function createSubscription(data: SelectSubscription) {
+  await db.insert(subscriptions).values(data);
+}
+
+export async function updateSubscriptionById(id: number, data: Partial<SelectSubscription>) {
+  await db.update(subscriptions).set(data).where(eq(subscriptions.id, id));
+}
+
+export async function deleteSubscriptionById(id: number) {
+  await db.delete(subscriptions).where(eq(subscriptions.id, id));
 }

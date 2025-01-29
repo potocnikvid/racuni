@@ -32,6 +32,7 @@ export function InvoicesTable({
     status: string;
     totalAmount: string;
     issueDate: Date;
+    date: Date;
     dueDate: Date;
   }>;
   offset: number;
@@ -66,6 +67,7 @@ export function InvoicesTable({
               <TableHead>Status</TableHead>
               <TableHead>Total Amount</TableHead>
               <TableHead>IssueDate</TableHead>
+              <TableHead>Date</TableHead>
               <TableHead>Due Date</TableHead>
             </TableRow>
           </TableHeader>
@@ -77,6 +79,7 @@ export function InvoicesTable({
                 <TableCell>{invoice.status}</TableCell>
                 <TableCell>${invoice.totalAmount}</TableCell>
                 <TableCell>{format(new Date(invoice.issueDate), 'dd-mm-yyyy')}</TableCell>
+                <TableCell>{format(new Date(invoice.date), 'dd-mm-yyyy')}</TableCell>
                 <TableCell>{format(new Date(invoice.dueDate), 'dd-mm-yyyy')}</TableCell>
               </TableRow>
             ))}

@@ -7,10 +7,10 @@ export async function POST(req: Request) {
   try {
     // Parse request body
     const body = await req.json();
-    const { invoiceNumber, serviceId, issueDate, dueDate } = body;
+    const { invoiceNumber, serviceId, issueDate, date, dueDate } = body;
 
     // Validate input
-    if (!invoiceNumber || !serviceId || !issueDate || !dueDate) {
+    if (!invoiceNumber || !serviceId || !issueDate || !date || !dueDate) {
       return NextResponse.json(
         { success: false, message: 'Missing required fields' },
         { status: 400 }
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     const scriptPath = path.resolve('./path/to/python/script.py');
 
     // Spawn a Python process to generate the PDF
-    const pythonProcess = spawn('python3', [scriptPath, invoiceNumber, serviceId, issueDate, dueDate]);
+    const pythonProcess = spawn('python3', [scriptPath, invoiceNumber, serviceId, issueDate, date, dueDate]);
 
     // Capture output (PDF path)
     let output = '';

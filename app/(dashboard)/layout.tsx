@@ -7,6 +7,7 @@ import {
   PanelLeft,
   Settings,
   ShoppingCart,
+  Receipt,
   Users2,
   ReceiptText
 } from 'lucide-react';
@@ -83,8 +84,8 @@ function DesktopNav() {
           <ReceiptText className="h-5 w-5" />
         </NavItem>
 
-        <NavItem href="#" label="Orders">
-          <ShoppingCart className="h-5 w-5" />
+        <NavItem href="/subscriptions" label="Subscriptions">
+          <Receipt className="h-5 w-5" />
         </NavItem>
 
         <NavItem href="/products" label="Products">

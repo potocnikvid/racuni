@@ -6,9 +6,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ message: "Method not allowed" });
   }
 
-  const { startingInvoiceNumber, serviceId, issueDate, dueDate } = req.body;
+  const { startingInvoiceNumber, serviceId, issueDate, date, dueDate } = req.body;
 
-  if (!startingInvoiceNumber || !serviceId || !issueDate || !dueDate) {
+  if (!startingInvoiceNumber || !serviceId || !issueDate || !date || !dueDate) {
     return res.status(400).json({ message: "Missing required fields" });
   }
 
@@ -17,6 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       startingInvoiceNumber,
       serviceId,
       new Date(issueDate),
+      new Date(date),
       new Date(dueDate)
     );
     res.status(200).json(result);
